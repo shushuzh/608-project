@@ -17,7 +17,7 @@ else:
 class GaussianDistribution(object):
     def __init__(self, mu, cov, device='cuda'):
         super(GaussianDistribution, self).__init__()
-
+        # where is the super class from?
         self.mu = mu
         self.cov = cov
         self.precision = torch.inverse(cov)
