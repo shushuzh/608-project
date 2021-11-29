@@ -3,7 +3,7 @@ from kernels import Kernel, InverseMultiquadricKernel
 from tqdm import tqdm
 
 
-class KSD():
+class KSD:
     def __init__(self, name, kernel_params, p, q):
         self.kernel_params = kernel_params
 
@@ -27,7 +27,7 @@ class KSD():
         # returns a ndarray
         return wx * wy * kxy
 
-    def discrepancy(self, N):
+    def discrepancy(self):
         # x_samples = self.q.sampler(n)
         # y_samples = self.q.sampler(m)
 
@@ -45,5 +45,5 @@ class KSD():
 
 
 # Wasserstein for 1d distrbutions
-class Wasserstein():
+class Wasserstein:
     pass

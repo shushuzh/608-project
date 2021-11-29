@@ -16,7 +16,7 @@ class LangevinDynamics(object):
         self.func = func
         # if without specifying the final lr, we use constant lr
         if self.lr_final is None:
-            self.lr_fn = lambda t: 0.75
+            self.lr_fn = lambda t: self.lr
         else:
             self.lr_fn = self.decay_fn(lr=lr, lr_final=lr_final, max_itr=max_itr)
         self.counter = 0.0
@@ -74,7 +74,7 @@ class MetropolisAdjustedLangevin(object):
         self.func = func
         # if without specifying the final lr, we use constant lr
         if self.lr_final is None:
-            self.lr_fn = lambda t: 0.75
+            self.lr_fn = lambda t: self.lr
         else:
             self.lr_fn = self.decay_fn(lr=lr, lr_final=lr_final, max_itr=max_itr)
         self.counter = 0.0

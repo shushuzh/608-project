@@ -52,7 +52,7 @@ class Gaussian:
         if z_optim:
             return dict(x_grad=x.grad, mu_grad=mu.grad)
 
-        return x.grad.data.numpy(), y.data.numpy()
+        return x.grad.data.numpy()
 
         ###### check this grad density
 
@@ -65,7 +65,8 @@ class Gaussian:
         # x = torch.randn(n,)
 
         # return multivariate_normal.rvs(mean=mu, cov=sigma, size=N)
-        return torch.distributions.multivariate_normal.MultivariateNormal(torch.Tensor(mu), torch.Tensor(sigma))
+        g = torch.distributions.multivariate_normal.MultivariateNormal(torch.Tensor(mu), torch.Tensor(sigma))
+        return g.sample(torch.Size([N])).numpy()
 
 
 
