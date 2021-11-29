@@ -1,5 +1,8 @@
-from torch.autograd import grad, jacobian
-import torch.autograd.numpy as np
+# import torch
+# from torch.autograd import Variable
+
+from autograd import grad, jacobian
+import autograd.numpy as np
 
 class Kernel():
     def __init__(self, name, params):
@@ -22,6 +25,7 @@ class Kernel():
     def grad_kx(self, x, y):
         k_x = lambda x_: self.k(x_,y)
         return grad(k_x)(x)
+        
 
     # here we fix x and take a derivative wrt y
     def grad_ky(self, x, y):
@@ -57,5 +61,5 @@ class InverseMultiquadricKernel(Kernel):
         if beta is None:
             beta = -0.5
 
-        return (c**2 + ((x - y)**2).sum())**beta
+        return (c**2 + ((x - y)**2).sum()) ** beta
 

@@ -64,8 +64,8 @@ class Gaussian:
         # l = torch.from_numpy(np.linalg.cholesky(sigma))
         # x = torch.randn(n,)
 
-        return multivariate_normal.rvs(mean=mu, cov=sigma, size=N)
-        # return torch.distributions.multivariate_normal.MultivariateNormal(torch.Tensor(mu), torch.Tensor(sigma))
+        # return multivariate_normal.rvs(mean=mu, cov=sigma, size=N)
+        return torch.distributions.multivariate_normal.MultivariateNormal(torch.Tensor(mu), torch.Tensor(sigma))
 
 
 

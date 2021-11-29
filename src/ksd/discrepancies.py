@@ -18,7 +18,7 @@ class KSD():
         self.weights = np.ones(len(self.q))/len(self.q)
 
     def h(self, x, y, wx, wy):
-        
+        # we can do this since the form of log density is known
         log_px = self.p.grad_log_density(x)
         log_py = self.p.grad_log_density(y)
 
@@ -27,16 +27,17 @@ class KSD():
         # returns a ndarray
         return wx * wy * kxy
 
-    def ksd_1d(self, n, m=5):
-        x_samples = self.q.sampler(n)
-        y_samples = self.q.sampler(m)
+    def discrepancy(self, N):
+        # x_samples = self.q.sampler(n)
+        # y_samples = self.q.sampler(m)
 
         # before the sum, this is a 3d tensor
         stein_average = np.sum(
                         np.array([
                             np.array([
-                                self.h(y_i,x_j) for y_i in y_samples]) 
-                                                for x_j in tqdm(x_samples)]
+                                self.h(self.q[i], self.q[j], self.weights[i], self.weights[j]) 
+                                                for i in range(len(self.q))]) 
+                                                for j in tqdm(range(len(self.q)))]
                                                         )
                                                         )
 
