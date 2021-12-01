@@ -5,7 +5,7 @@ module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
-from ksd.kernels import InverseMultiquadricKernel, InverseMultiquadricKernel_pre
+from ksd.kernels import InverseMultiquadricKernel
 
 import numpy as np
 from tqdm import tqdm
@@ -18,8 +18,6 @@ class KSD:
 
         if name == 'imq':
             self.kernel = InverseMultiquadricKernel(name, kernel_params)
-        # elif name == 'imq_pre':
-        #     self.kernel = InverseMultiquadricKernel_pre(name, kernel_params)
         else:
             raise NotImplementedError
 
@@ -40,7 +38,7 @@ class KSD:
                                 log_px, log_py, 
                                 self.weights, self.weights
                                 )
-        return kxy
+        return np.sqrt(kxy)
 
     # def h(self, x, y, wx, wy):
     #     # we can do this since the form of log density is known

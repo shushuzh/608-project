@@ -55,10 +55,10 @@ class Gaussian:
     #     return x.grad.data.numpy()
     
     def grad_log_density(self, x):
-        mu = self.mu[np.newaxis,:]
+        mu = self.mu
         inv_sigma = np.linalg.inv(self.sigma)
 
-        return - np.einsum("jk, ij -> ik", inv_sigma, (x - mu))
+        return - np.einsum("jk, ij -> ik", inv_sigma, (x - mu[np.newaxis,:]))
 
         ###### check this grad density
 

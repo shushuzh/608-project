@@ -122,7 +122,7 @@ class InverseMultiquadricKernel(Kernel):
 
 
 if __name__ == '__main__':
-    from example_Gaussian import Gaussian
+    from distributions import Gaussian
     mu = np.array([1.2, .6])
     cov = (
         0.9*(np.ones([2, 2]) -
