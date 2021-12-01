@@ -39,20 +39,26 @@ class Gaussian:
     def log_density(self, x):
         return np.log(self.density(x))
 
-    def grad_log_density(self, x, z_optim=False):
-        dtype = torch.FloatTensor
+    # def grad_log_density(self, x, z_optim=False):
+    #     dtype = torch.FloatTensor
 
-        mu = Variable(torch.Tensor(self.mu).type(dtype), requires_grad=z_optim)
-        sigma = Variable(torch.Tensor(self.sigma).type(dtype), requires_grad=False)
-        x = Variable(torch.Tensor(x).type(dtype), requires_grad=True)
+    #     mu = Variable(torch.Tensor(self.mu).type(dtype), requires_grad=z_optim)
+    #     sigma = Variable(torch.Tensor(self.sigma).type(dtype), requires_grad=False)
+    #     x = Variable(torch.Tensor(x).type(dtype), requires_grad=True)
 
-        y = (-1/2) * torch.dot(x - mu, torch.inverse(sigma).mv(x - mu))
-        y.backward()
+    #     y = (-1/2) * torch.dot(x - mu, torch.inverse(sigma).mv(x - mu))
+    #     y.backward()
 
-        if z_optim:
-            return dict(x_grad=x.grad, mu_grad=mu.grad)
+    #     if z_optim:
+    #         return dict(x_grad=x.grad, mu_grad=mu.grad)
 
-        return x.grad.data.numpy()
+    #     return x.grad.data.numpy()
+    
+    def grad_log_density(self, x):
+        mu = self.mu[np.newaxis,:]
+        inv_sigma = np.linalg.inv(self.sigma)
+
+        return - np.einsum("jk, ij -> ik", inv_sigma, (x - mu))
 
         ###### check this grad density
 
@@ -81,12 +87,13 @@ if __name__ == '__main__':
     
     g = Gaussian({'mu': mu, 'sigma':cov})
 
-    x = torch.Tensor([.0, .0])
+    x = np.arange(10).reshape((5,2))
+    x = np.vstack([x, [0, 0]])
+    # grad_autodiff = g.grad_log_density(x)
+    grad_manual = g.grad_log_density(x)
 
-    grad_autodiff, y = g.grad_log_density(x)
-    grad_manual = g.grad_log_density_1(x)
-
-    print(grad_autodiff)
+    # print(grad_autodiff)
+    print(grad_manual)
 
 
 
