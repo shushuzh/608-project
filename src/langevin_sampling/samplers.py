@@ -1,19 +1,24 @@
 import torch
+#from .precondSGLD import pSGLD
 from .SGLD import SGLD
 import copy
 
 class LangevinDynamics(object):
-    def __init__(self, x, func, lr=1e-2, lr_final=1e-4, max_itr=1e4,
+    def __init__(self, x, func, lr=1e2, lr_final=None, max_itr=1e4, 
                  device='cpu'):
         super(LangevinDynamics, self).__init__()
 
         self.x = x
-        self.optim = SGLD([self.x], lr, weight_decay=0.0)
+        self.optim = SGLD([self.x], lr, momentum=0.0, weight_decay=0.0)
         self.lr = lr
         self.lr_final = lr_final
         self.max_itr = max_itr
         self.func = func
-        self.lr_fn = self.decay_fn(lr=lr, lr_final=lr_final, max_itr=max_itr)
+        # if without specifying the final lr, we use constant lr
+        if self.lr_final is None:
+            self.lr_fn = lambda t: self.lr
+        else:
+            self.lr_fn = self.decay_fn(lr=lr, lr_final=lr_final, max_itr=max_itr)
         self.counter = 0.0
 
     def sample(self):
@@ -33,13 +38,14 @@ class LangevinDynamics(object):
             return a*((b + t)**gamma)
         return lr_fn
 
+
     def lr_decay(self):
         for param_group in self.optim.param_groups:
             param_group['lr'] = self.lr_fn(self.counter)
 
 
 class MetropolisAdjustedLangevin(object):
-    def __init__(self, x, func, lr=1e-2, lr_final=1e-4, max_itr=1e4,
+    def __init__(self, x, func, lr=1e-2, lr_final=None, max_itr=1e4,
                  device='cpu'):
         super(MetropolisAdjustedLangevin, self).__init__()
 
@@ -61,12 +67,16 @@ class MetropolisAdjustedLangevin(object):
             create_graph=False)[0].data
         self.grad[1].data = self.grad[0].data
 
-        self.optim = pSGLD([self.x[1]], lr, weight_decay=0.0)
+        self.optim = SGLD([self.x[1]], lr, momentum=0.0, weight_decay=0.0)
         self.lr = lr
         self.lr_final = lr_final
         self.max_itr = max_itr
         self.func = func
-        self.lr_fn = self.decay_fn(lr=lr, lr_final=lr_final, max_itr=max_itr)
+        # if without specifying the final lr, we use constant lr
+        if self.lr_final is None:
+            self.lr_fn = lambda t: self.lr
+        else:
+            self.lr_fn = self.decay_fn(lr=lr, lr_final=lr_final, max_itr=max_itr)
         self.counter = 0.0
 
     def sample(self):
