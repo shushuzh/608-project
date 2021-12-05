@@ -5,7 +5,7 @@ module_path = os.path.abspath(os.path.join('..'))
 if module_path not in sys.path:
     sys.path.append(module_path)
 
-from ksd.kernels import InverseMultiquadricKernel
+from kernels import InverseMultiquadricKernel
 
 import numpy as np
 from tqdm import tqdm
@@ -28,9 +28,9 @@ class KSD:
         self.weights = np.ones(len(self.q))/len(self.q)
 
     # inputs are all 2d arraies
-    def discrepancy(self):
+    def discrepancy(self, _tf=False):
         # we can do this since the form of log density is known
-        log_px = self.p.grad_log_density(self.q)
+        log_px = self.p.grad_log_density(self.q, _tf=_tf)
         log_py = log_px
 
         kxy = self.kernel.stein_k(
@@ -76,3 +76,5 @@ class Wasserstein:
 
 
     
+# if __name__ == '__main__':
+#     print("heyy")
