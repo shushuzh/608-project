@@ -1,6 +1,14 @@
-import torch
 #from .precondSGLD import pSGLD
+import sys
+import os
+
+# module_path = os.path.abspath(os.path.join('..'))
+# if module_path not in sys.path:
+#     sys.path.append(module_path)
+
 from .SGLD import SGLD
+
+import torch
 import copy
 
 class LangevinDynamics(object):
@@ -24,6 +32,11 @@ class LangevinDynamics(object):
     def sample(self):
         self.lr_decay()
         self.optim.zero_grad()
+
+        if any(torch.isnan(self.x)):
+            print('Chain diverges')
+            # raise ValueError('Chain diverges')
+
         loss = self.func(self.x)
         loss.backward()
         self.optim.step()
@@ -85,6 +98,11 @@ class MetropolisAdjustedLangevin(object):
         while not accepted:
             self.x[1].grad = self.grad[1].data
             self.P = self.optim.step()
+
+            if any(torch.isnan(self.x[1])):
+                print('Chain diverges')
+                # raise ValueError('Chain diverges')
+
             self.loss[1] = self.func(self.x[1])
             self.grad[1].data = torch.autograd.grad(
                 self.loss[1], [self.x[1]], create_graph=False)[0].data
@@ -121,3 +139,23 @@ class MetropolisAdjustedLangevin(object):
     def lr_decay(self):
         for param_group in self.optim.param_groups:
             param_group['lr'] = self.lr_fn(self.counter)
+
+
+if __name__ == '__main__':
+
+    import numpy as np
+
+    def decay_fn(lr=1e-2, lr_final=1e-4, max_itr=1e4):
+        gamma = -0.55
+        b = max_itr/((lr_final/lr)**(1/gamma) - 1.0)
+        print("b is {}".format(b))
+        a = lr/(b**gamma)
+        print("a is {}".format(a))
+        def lr_fn(t, a=a, b=b, gamma=gamma):
+            return a*((b + t)**gamma)
+        return lr_fn
+
+    lr_lis = np.linspace(1e-2,1.3,3)
+
+    for lr in lr_lis:
+        print(decay_fn(lr=lr, max_itr=1000))

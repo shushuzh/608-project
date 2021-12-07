@@ -11,6 +11,10 @@ import matplotlib.pylab as pylab
 import copy
 from tqdm import tqdm
 from functools import partial
+import seaborn as sns
+import copy
+import time
+
 # from  scipy.stats import multivariate_normal
 # import scipy.stats as ss
 import torch
@@ -86,18 +90,29 @@ def _sample(
             step_size=lr)
 
     elif name == 'sgmala':
+        # uses zeros for initialisation for now
+        # init = torch.from_numpy(init_state)
+        den_fct = partial(dist.neg_log_density, _tc=True, _tf=False)
+        
         sampler = MetropolisAdjustedLangevin(
-            torch.Tensor(init_state, requires_grad=True, device=device),
-            partial(dist.neg_log_density(), _tc=True), # use the torch version of nll
+            torch.zeros([dist.d], requires_grad=True, device=device)
+            #  + init
+             ,
+            den_fct, # use the torch version of nll
             lr,
             lr_final=lr_final,
             max_itr=n,
             device=device
         )
     elif name == 'sgula':
+        # init = torch.from_numpy(init_state)
+        den_fct = partial(dist.neg_log_density, _tc=True, _tf=False)
+
         sampler = LangevinDynamics(
-            torch.Tensor(init_state, requires_grad=True, device=device),
-            partial(dist.neg_log_density(), _tc=True), # use the torch version of nl
+            torch.zeros([dist.d], requires_grad=True, device=device)
+            #  + init
+             ,
+            den_fct, # use the torch version of nll
             lr,
             lr_final=lr_final,
             max_itr=n,
@@ -135,11 +150,17 @@ def _sample(
         raise NameError('Specify sampler with name = mala, ula, sgmala, sgula')
     
     if plot:
+        flag = (name == 'sgmala' or name == 'sgula') and (lr_final is not None)
+
+        if flag:
+            lr_type = '(decay lr)'
+        else:
+            lr_type = '(const lr)'
         # use the plot_contour function to specify the axes
         X, Y, Z = dist.plot_contour(_return_axes=True)
 
         plt.figure("training logs - net", dpi=150, figsize=(7, 2.5))
-        plt.plot(loss_log)
+        plt.plot(-loss_log)
         plt.title("Negative Log-Likelihood")
         plt.xlabel("Iterations")
         plt.ylabel(r"$- \log \ \mathrm{N}(\mathbf{x} | \mu, \Sigma) + const.$")
@@ -147,7 +168,7 @@ def _sample(
         plt.show()
         plt.close()
 
-        plt.figure(dpi=150, figsize=(9, 4))
+        plt.figure(dpi=150, figsize=(6, 6))
         plt.contour(X, Y, Z, 20, alpha=0.5)
         plt.scatter(est_samples[:, 0], 
                     est_samples[:, 1], 
@@ -157,7 +178,7 @@ def _sample(
         plt.ylabel(r"$x_2$")
         # plt.xlim([-3, 6])
         # plt.ylim([-4, 5])
-        plt.title("Samples drawn with " + name)
+        plt.title("Samples drawn with " + name + " " + lr_type)
         plt.show()
         plt.close()
 
@@ -175,13 +196,17 @@ def _eval_ksd(
     burn_in=500, 
     thinning=None, 
     device=device,
-    plot=False
+    plot=False,
+    _plot = False
     ):
 
     ksd_lis = []
+    elp_lis = []
 
     for i in tqdm(range(len(lr_lis))):
-        est_samp = _sample(
+        start = time.time()
+
+        est_samp, _ = _sample(
         name,
         init_state, 
         dist, 
@@ -191,15 +216,30 @@ def _eval_ksd(
         burn_in, 
         thinning, 
         device,
-        plot=plot
+        plot=_plot
         )
-        
-        _ksd = KSD('imq', dict(c=1, beta=-0.5), p=dist, q=est_samp)
-        ksd_lis.append(_ksd.discrepancy())
+        end = time.time()
 
-    return ksd_lis
+        _ksd = KSD('imq', dict(c=1, beta=-0.5), p=dist, q=est_samp)
+
+        ksd_lis.append(_ksd.discrepancy())
+        elp_lis.append(end - start)
+
+    if plot:
+        plt.figure()
+        plt.plot(lr_lis, ksd_lis)
+        plt.show()
+        plt.close()
+
+        plt.figure()
+        plt.plot(lr_lis, elp_lis)
+        plt.show()
+        plt.close()
+
+    return ksd_lis, elp_lis
 
 def compare_ksd(
+    name_lis,
     init_state, 
     dist, 
     max_itr, 
@@ -207,23 +247,29 @@ def compare_ksd(
     lr_final, # need to specify for the decay lr
     burn_in=500, 
     thinning=None, 
-    device=device,
-    plot=False
+    device=device
+    # ,
+    # plot=False
+    # _plot=False
     ):
 
-    name_lis = ['mala', 'ula', 'sgmala', 'sgula']
+    # name_lis = ['mala', 'ula', 'sgmala', 'sgula']
+    # name_lis = ['mala']
     ksd_dict = dict()
+    elp_dict = dict()
     # min_idx_lis = []
     min_lr_dict = dict()
-    nan_lr_dict = dict() # find the lr for first occurance of nan
+    # detect divergences
+    # find the lr for first occurance of nan
+    nan_lr_dict = dict() 
 
     # find ksd for sampler with constant lr
-    plt.figure()
+    plt.figure(dpi=150, figsize=(9, 6))
     for name in name_lis:
         print('sampling from '+name)
 
         # constant learning rate --------------------
-        ksd_val = _eval_ksd(
+        ksd_val, elp_time= _eval_ksd(
         name,
         init_state, 
         dist, 
@@ -232,12 +278,15 @@ def compare_ksd(
         None, 
         burn_in, 
         thinning, 
-        device,
-        plot
+        device
+        # ,
+        # plot,
+        # _plot
         )
         ksd_dict[name+'_const'] = ksd_val
+        elp_dict[name+'_const'] = elp_time
 
-        # get the best lr in the list
+        # get the best lr in the lis
         _min_idx = np.nanargmin(ksd_val)
         # _min_lr = lr_lis[_min_idx]
         # get the index for the first occurance of nan
@@ -250,52 +299,392 @@ def compare_ksd(
         plt.plot(lr_lis, ksd_val, label=name+'_const')
 
         # decay learning rate -----------------------
-        ksd_val_decay = _eval_ksd(
-        name,
-        init_state, 
-        dist, 
-        max_itr, 
-        lr_lis, 
-        lr_final, # use decay learning rate
-        burn_in, 
-        thinning, 
-        device,
-        plot
-        )
-        ksd_dict[name+'_decay'] = ksd_val_decay
+        flag = (name == 'sgmala' or name == 'sgula') and (lr_final is not None)
+        
+        if flag:
+            ksd_val_decay = _eval_ksd(
+                name,
+                init_state, 
+                dist, 
+                max_itr, 
+                lr_lis, 
+                lr_final, # use decay learning rate
+                burn_in, 
+                thinning, 
+                device
+            )
+            ksd_dict[name+'_decay'] = ksd_val_decay
+            elp_dict[name+'_decay'] = elp_time
 
-        # get the best lr in the list
-        _min_idx = np.nanargmin(ksd_val_decay)
-        # _min_lr = lr_lis[_min_idx]
-        # get the index for the first occurance of nan
-        _nan_idx = np.where(np.isnan(ksd_val_decay))[0]
+            # get the best lr in the lis
+            _min_idx = np.nanargmin(ksd_val_decay)
+            # _min_lr = lr_lis[_min_idx]
+            # get the index for the first occurance of nan
+            _nan_idx = np.where(np.isnan(ksd_val_decay))[0]
 
-        # min_idx_lis.append(_min_idx)
-        min_lr_dict[name+'_decay'] = (lr_lis[_min_idx])
-        nan_lr_dict[name+'_decay'] = (lr_lis[_nan_idx])
+            # min_idx_lis.append(_min_idx)
+            min_lr_dict[name+'_decay'] = (lr_lis[_min_idx])
+            nan_lr_dict[name+'_decay'] = (lr_lis[_nan_idx])
 
-        plt.plot(lr_lis, np.log(ksd_val), label=name+'_decay')
+            plt.plot(lr_lis, ksd_val_decay, label=name+'_decay')
     
     plt.title('Kernel Stein Discrepancy')
     plt.xlabel('Constant/Initial Step Size')
-    plt.ylabel('log(KSD)')
-    plt.yscale('log')
+    plt.ylabel('KSD')
+    # plt.yscale('log')
+    # plt.legend()
+    plt.legend(loc='upper center', 
+            bbox_to_anchor=(0.5, -0.1),
+            borderaxespad=1,
+            fancybox=True, ncol=4)
+    plt.savefig('img/ksd_compare_{}.pdf'.format(dist.k), bbox_inches="tight")
+    plt.show()
+    plt.close()
+
+    plt.title('Time Elapsed')
+    plt.xlabel('Constant/Initial Step Size')
+    plt.ylabel('Time')
+    # plt.yscale('log')
+    # plt.legend()
+    plt.legend(loc='upper center', 
+            bbox_to_anchor=(0.5, -0.1),
+            borderaxespad=1,
+            fancybox=True, ncol=4)
+    plt.savefig('img/time_compare_{}.pdf'.format(dist.k), bbox_inches="tight")
     plt.show()
     plt.close()
 
     return ksd_dict, min_lr_dict, nan_lr_dict
 
+"""
+TODO
+- [x] debug the code
+- [] write code for plotting contour of evolutions of samples, compare to ground truth
+- [x] need to write code to control the relative position of the mean of the gmm 
+- [] then use compare_ksd to select the best lr
+  - [] in the gmm case, check how the best lr changes w.r.t. 
+      the Euclidean dist between modes of components
+  - [] in the single MVN case (eucl_dist=0), 
+      check that it cororborates the Roberts & Tweedie result
+"""
 
-# TODO:
-# - debug the code
-# - need to write code to control the relative position of the mean of the gmm 
-# - then use compare_ksd to select the best lr
-    # - in the gmm case, check how the best lr changes w.r.t. 
-        # the Euclidean dist between modes of components
-    # - in the single MVN case (eucl_dist=0), 
-        # check that it cororborates the Roberts & Tweedie result
+def _compare_mean_dist(
+        step,
+        name,
+        mu0,
+        sigma,
+        pi,
+        init_state, 
+        n, 
+        lr_lis, 
+        lr_final=None, # need to specify for the decay lr
+        burn_in=500, 
+        thinning=None, 
+        device=device
+        ):
 
-def compare_dist():
+    dis = 0
+
+    # check if we have decay stepsize
+    flag = (name == 'sgmala' or name == 'sgula') and (lr_final is not None)
+
+    # the unimodal case ------------------
+    # mu0 = np.array([[0.6, 1.2]])
+    # sigma0 = np.stack([np.diag([0.5, 1.2]) + np.ones([2,2])*0.3])
+    
+    # if k_is_1:
+    #     pi0 = np.ones(1)
+    #     sigma0 = np.stack([sigma[0]])
+    #     gmm0 = GaussianMixture({'mu':mu0, 'sigma':sigma0, 'pi':pi0})
+
+    #     # ksd_mat = np.array([])
+    #     print("sample from unimodal --------")
+    #     ksd_dict0, _, _ = compare_ksd(
+    #             [name],
+    #             init_state, 
+    #             gmm0, 
+    #             n, 
+    #             lr_lis, 
+    #             lr_final, # need to specify for the decay lr
+    #             burn_in, 
+    #             thinning, 
+    #             device
+    #         )
+    #     # initialise
+    #     ksd_mat_const = ksd_dict0[name+'_const']
+
+    #     if flag:
+    #         ksd_mat_decay = ksd_dict0[name+'_decay']
+    # else:
+    #     ksd_mat_decay = np.array([])
+    ksd_lis_const = []
+    elp_lis_const = []
+    dis_lis = []
+
+    if flag:
+        ksd_lis_decay = []
+        elp_lis_decay = []
+
+    # bimodal case -----------------------
+    mu1 = copy.deepcopy(mu0)
+    print("sample from bimodal --------")
+    while dis < 4:
+        mu1 += step
+        mu = np.concatenate((mu0, mu1), axis=0)
+
+        gmm = GaussianMixture({'mu':mu, 'sigma':sigma, 'pi':pi})
+
+        ksd_val, elp_time = _eval_ksd(
+            name,
+            init_state, 
+            gmm, 
+            n, 
+            lr_lis, 
+            None, # need to specify for the decay lr
+            burn_in, 
+            thinning, 
+            device
+        )
+        ksd_lis_const.append(ksd_val)
+        elp_lis_const.append(elp_time)
+        
+        if flag:
+            ksd_val, elp_time = _eval_ksd(
+                name,
+                init_state, 
+                gmm, 
+                n, 
+                lr_lis, 
+                lr_final, # need to specify for the decay lr
+                burn_in, 
+                thinning, 
+                device
+            )
+            ksd_lis_decay.append(ksd_val)
+            elp_lis_decay.append(elp_time)
+
+        dis = np.linalg.norm(mu1-mu0)
+        dis_lis.append(dis)
+
+        # print(dis)
+    
+    ksd_mat_const = np.vstack(ksd_lis_const)
+    elp_mat_const = np.vstack(elp_lis_const)
+
+    # plot the heatmap
+    plt.figure(dpi=150, figsize=(10, 6))
+    sns.heatmap(ksd_mat_const, cmap="YlGnBu", 
+                xticklabels=np.round(lr_lis,2),
+                yticklabels=np.round(dis_lis,2))
+    plt.title('KSD (Constant Step Size)')
+    plt.xlabel('Step Size')
+    plt.ylabel('Mode Distance')
+    plt.savefig('img/ksd_mean_{}_const_test.pdf'.format(name), bbox_inches="tight")
+    plt.show()
+    plt.close()
+
+    plt.figure(dpi=150, figsize=(10, 6))
+    sns.heatmap(elp_mat_const, cmap="YlGnBu", 
+                xticklabels=np.round(lr_lis,2),
+                yticklabels=np.round(dis_lis,2))
+    plt.title('Time Elapsed')
+    plt.xlabel('Step Size')
+    plt.ylabel('Mode Distance')
+    plt.savefig('img/time_mean_{}_const_test.pdf'.format(name), bbox_inches="tight")
+    plt.show()
+    plt.close()
+
+    if flag:
+        ksd_mat_decay = np.vstack(ksd_lis_decay)
+        elp_mat_decay = np.vstack(elp_lis_decay)
+
+        plt.figure(dpi=150, figsize=(10, 6))
+        sns.heatmap(ksd_mat_decay, cmap="YlGnBu", 
+                    xticklabels=np.round(lr_lis,2),
+                    yticklabels=np.round(dis_lis,2))
+        plt.title('KSD (Decay Step Size)')
+        plt.xlabel('Initial Step Size')
+        plt.ylabel('Mode Distance')
+        plt.savefig('img/ksd_mean_{}_decay.pdf'.format(name), bbox_inches="tight")
+        plt.show()
+        plt.close()
+
+        plt.figure(dpi=150, figsize=(10, 6))
+        sns.heatmap(elp_mat_decay, cmap="YlGnBu", 
+                    xticklabels=np.round(lr_lis,2),
+                    yticklabels=np.round(dis_lis,2))
+        plt.title('Time Elapsed')
+        plt.xlabel('Step Size')
+        plt.ylabel('Mode Distance')
+        plt.savefig('img/time_mean_{}_decay.pdf'.format(name), bbox_inches="tight")
+        plt.show()
+        plt.close()
+
+
+def compare_mean_dist(
+        step,
+        mu0,
+        sigma,
+        pi,
+        init_state, 
+        n, 
+        lr_lis, 
+        lr_final=None, # need to specify for the decay lr
+        burn_in=500, 
+        thinning=None, 
+        device=device,
+        k_is_1=False
+        ):
+    
+    pi = np.arange(2,4)/sum(np.arange(2,4)) # !! remember to delete this
+
+    name_lis = ['mala', 'ula', 'sgmala', 'sgula']
+    for name in name_lis:
+        _compare_mean_dist(
+            step,
+            name,
+            mu0,
+            sigma,
+            pi,
+            init_state, 
+            n, 
+            lr_lis, 
+            lr_final, # need to specify for the decay lr
+            burn_in, 
+            thinning, 
+            device,
+            k_is_1
+            )
+    
     pass
 
 
+if __name__ == '__main__':
+    # # sgmala and sgula diverges around 1.7
+    # mu = np.array([[0.6, 1.2], [0.6+4, 1.2+4]])
+    # sigma = np.stack([np.diag([0.5, 1.2]) + np.ones([2,2])*0.3, np.diag([1.2, 0.6])])
+    # # pi = 1/2 * np.ones(2)
+    # pi = np.arange(2,4)/sum(np.arange(2,4))
+
+    # # sgmala and sgula diverges around 1.3
+    # # mu = np.array([[0.6, 1.2]])
+    # # pi = np.ones(1)
+    # # sigma = np.stack([np.diag([0.5, 1.2]) + np.ones([2,2])*0.3])
+
+    # gmm = GaussianMixture({'mu':mu, 'sigma':sigma, 'pi':pi})
+    # init_state = -np.ones(2)
+    # n = 2000
+    # lr = 4
+    
+
+    ### sampler check ------------------------------------
+    # _sample(
+    #     "mala",
+    #     init_state, 
+    #     gmm, 
+    #     n, 
+    #     lr, 
+    #     # lr_final=4e-2,
+    #     lr_final=None,
+    #     burn_in=1000, 
+    #     thinning=None, 
+    #     device=device,
+    #     plot=True
+    # )
+
+    ### KSD check -----------------------------------------
+    # lr_lis = np.linspace(0,5,20)
+    # burn_in = 1000
+    # n = 2000
+
+    # ksd_lis = _eval_ksd(
+    #     "mala",
+    #     init_state, 
+    #     gmm, 
+    #     n, 
+    #     lr_lis, 
+    #     lr_final=None,
+    #     burn_in=burn_in, 
+    #     thinning=None, 
+    #     device=device,
+    #     plot=True,
+    #     _plot=False
+    # )
+
+    ### Compare KSD ------------------------------------
+    # mu = np.array([[0.6, 1.2], [3., 2.6]])
+    # sigma = np.stack([np.diag([0.5, 1.2]) + np.ones([2,2])*0.3, np.diag([1.2, 0.6])])
+    # pi = np.arange(2,4)/sum(np.arange(2,4))
+
+    # ## sgmala and sgula diverges around 1.3
+    # # mu = np.array([[0.6, 1.2]])
+    # # pi = np.ones(1)
+    # # sigma = np.stack([np.diag([0.5, 1.2]) + np.ones([2,2])*0.3])
+
+    # name_lis = ['mala', 'ula', 'sgmala', 'sgula']
+    # # name_lis = ['sgmala']
+    # gmm = GaussianMixture({'mu':mu, 'sigma':sigma, 'pi':pi})
+    # init_state = -np.ones(2)
+    # n = 1000
+    # lr = 0.2
+    # lr_lis = np.linspace(0.045,1.7,3)
+
+    # # sgmala and sgula diverges around 1.78 for the above MVN
+    # ksd_dict, min_lr_dict, nan_lr_dict = compare_ksd(
+    #     name_lis,
+    #     init_state, 
+    #     gmm, 
+    #     n, 
+    #     lr_lis, 
+    #     lr_final=4e-2, # need to specify for the decay lr
+    #     burn_in=500, 
+    #     thinning=None, 
+    #     device=device
+    #     )
+    # print("ksd_dict")
+    # print(ksd_dict)
+    # print("min_lr_dict")
+    # print(min_lr_dict)
+    # print("nan_lr_dict")
+    # print(nan_lr_dict)
+    
+    ### heatmap KSD ------------------------------------
+    # init dist
+    mu0 = np.array([[0.6, 1.2]])
+    pi = np.arange(2,4)/sum(np.arange(2,4))
+    sigma = np.stack([np.diag([0.5, 1.2]) + np.ones([2,2])*0.3, np.diag([1.2, 0.6])])
+    
+    # MCMC
+    init_state = -np.ones(2)
+    n = 1000
+    burn_in = 500
+    lr_final=4e-2
+
+    name = 'mala'
+
+    if name == 'sgmala' or name == 'sgula':
+        if lr_final is None:
+            lr_lis = np.linspace(0.001,1.3,20)
+        else:
+            lr_lis = np.linspace(0.045,1.3,20)
+    elif name == 'mala' or name =='ula':
+        lr_lis = np.linspace(5,10,5)
+
+    # mode dist transition
+    step = 0.25
+
+    
+    _compare_mean_dist(
+        step,
+        "mala",
+        mu0,
+        sigma,
+        pi,
+        init_state, 
+        n, 
+        lr_lis, 
+        lr_final, # need to specify for the decay lr
+        burn_in, 
+        thinning=None, 
+        device=device
+        )

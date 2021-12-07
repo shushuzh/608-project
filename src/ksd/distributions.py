@@ -99,8 +99,8 @@ class GaussianMixture:
         self.sigma = params['sigma']
         self.pi = params['pi'] #weights
  
-        self.k = int(mu.shape[0]) #number of Gaussians
-        self.d = int(mu.shape[1])
+        self.k = int(self.mu.shape[0]) #number of Gaussians
+        self.d = int(self.mu.shape[1])
 
         # create tf object gaussian mixture
         _tf_mix =  tfd.Categorical(self.pi)
@@ -147,7 +147,8 @@ class GaussianMixture:
             # so we cannot implement mixture MVN in torch yet
             sigma_i = self.sigma[i]
             mu_i = self.mu[i][np.newaxis,:]
-
+            # print(x.shape)
+            # print(mu_i.shape)
             p_1 = (((2 * np.pi)**(self.d/2)) * (np.linalg.det(sigma_i))**0.5)
             # p_2 = -1/2 * ((x-mu_i).T @ np.linalg.inv(sigma_i)) @ (x-mu_i)
 
@@ -172,8 +173,8 @@ class GaussianMixture:
         if _tf:
             return self._tf_gmm.log_prob(x)
         elif _tc:
-            _x = torch.Tensor(x)
-            return self._tc_gmm.log_prob(_x)
+            # _x = torch.Tensor(x, requires_grad=True, device=device)
+            return self._tc_gmm.log_prob(x)
         else:
             return np.log(self.density(x))
     
@@ -181,12 +182,12 @@ class GaussianMixture:
         """Returns corresponding tensor or numpy array
         """
         if _tf:
-            return -self.log_density(_tf=True)
+            return -self.log_density(x, _tf=True)
         elif _tc:
-            return -self.log_density(_tc=True)
+            return -self.log_density(x, _tc=True)
         else:
             return -np.log(self.density(x))
-            
+
 
     def _tf_grad_log_density(self, x):
         _dtype = np.float64
@@ -204,8 +205,8 @@ class GaussianMixture:
         mu = self.mu
         inv_sigma = np.linalg.inv(self.sigma)[0]
 
-        print(mu.shape)
-        print(inv_sigma.shape)
+        # print(mu.shape)
+        # print(inv_sigma.shape)
         return - np.einsum("jk, ij -> ik", inv_sigma, (x - mu))
 
 
@@ -219,7 +220,7 @@ class GaussianMixture:
             comp_density = self._density(x)
             for i in range(self.k):
                 mu_i = self.mu[i][np.newaxis,:]
-                inv_sigma_i = np.linalg.inv(sigma[i])
+                inv_sigma_i = np.linalg.inv(self.sigma[i])
                 gld_i = - np.einsum("ij, kj -> ki", inv_sigma_i, (x - mu_i))
                 
                 gld.append(gld_i * comp_density[i])
@@ -239,10 +240,10 @@ class GaussianMixture:
         """Both X and Y are numpy arrays
         """
         if X is None:
-            X = torch.linspace(-2, 7, N)
+            X = torch.linspace(-2, 7.5, N)
             
         if Y is None:
-            Y = torch.linspace(-3, 6, N)
+            Y = torch.linspace(-3, 7.5, N)
 
         _X, _Y = np.meshgrid(X, Y)
         pos = np.dstack((_X, _Y))
