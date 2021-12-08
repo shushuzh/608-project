@@ -240,10 +240,10 @@ class GaussianMixture:
         """Both X and Y are numpy arrays
         """
         if X is None:
-            X = torch.linspace(-2, 7.5, N)
+            X = torch.linspace(-2, 8, N)
             
         if Y is None:
-            Y = torch.linspace(-3, 7.5, N)
+            Y = torch.linspace(-3, 8, N)
 
         _X, _Y = np.meshgrid(X, Y)
         pos = np.dstack((_X, _Y))
